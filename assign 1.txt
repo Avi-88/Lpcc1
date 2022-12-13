@@ -1,0 +1,257 @@
+import numpy as np
+
+emot = np.array([
+    ["STOP", "1", "00"],
+    ["ADD", "1", "01"],
+    ["SUB", "1", "02"],
+    ["MULT", "1", "03"],
+    ["MOVER", "1", "04"],
+    ["MOVEM", "1", "05"],
+    ["COMP", "1", "06"],
+    ["BC", "1", "07"],
+    ["DIV", "1", "08"],
+    ["READ", "1", "09"],
+    ["PRINT", "1", "10"],
+    ["START", "3", "01"],
+    ["END", "3", "02"],
+    ["ORIGIN", "3", "03"],
+    ["EQU", "3", "04"],
+    ["LTORG", "3", "05"],
+    ["DS", "2", "01"],
+    ["DC", "2", "02"],
+    ["AREG", "4", "01"],
+    ["BREG", "4", "02"],
+    ["CREG", "4", "03"],
+    ["EQ", "5", "01"],
+    ["LT", "5", "02"],
+    ["GT", "5", "03"],
+    ["NE", "5", "04"],
+    ["LE", "5", "05"],
+    ["GE", "5", "06"],
+    ["ANY", "5", "07"],
+])
+st = {}
+lt = []
+pt = [0]
+LC = 0
+LTstart = -1
+iLT = 0
+iPT = 0
+f = open('/Users/sarvadnyachiddarwar/Desktop/PROJECTS/TY/Sem 1/LPCC/Pracs/Python Codes/Assi1/Assi1.txt').read().replace(',', '')
+code = f.split('\n')
+alp_code = []
+lclist = []
+for line in code:
+    temp_list = line.split()
+    alp_code.append(temp_list)
+# pass-1 of assembler
+for line in alp_code:
+    # if end of assembly program
+    if "END" in line:
+        break
+    # Get LC
+    if "START" in line:
+        LC = int(line[1])
+        continue
+
+    # Handling ORIGIN
+
+    if "ORIGIN" in line:
+        if '+' in line[1]:
+            label = line[1].split('+')
+            LC = int(st[label[0]]) + int(label[1])
+        elif '-' in line[1]:
+            label = line[1].split('-')
+            LC = int(st[label[0]]) - int(label[1])
+
+        else:
+            LC = int(st[line[1]])
+            continue
+
+    # Handling EQU
+    if "EQU" in line:
+        of_label = line[2]
+        to_label = line[0]
+        st[to_label] = st[of_label]
+        lclist.append(LC)
+        continue
+    is_ltorg = False
+    # Handling DS and DC
+    if 'DS' in line:
+        if line[0] in st.keys():
+            # if symbol already added in symbol table
+            st.update({line[0]: LC})
+        else:
+            # insert this symbol in symbol table
+            st[line[0]] = LC
+        lclist.append(LC)
+        LC = LC + int(line[2])
+        continue
+
+    if 'BC' in line:
+        lclist.append(LC)
+        print("branch on conidtion : ", LC)
+        LC += 1
+        continue
+    # Other cases:
+    for word in line:
+        # if symbol not in symbol table, then insert into symbol table
+        if not (word in emot[:, 0]) and not (word.isnumeric()) and not (word in st.keys()) and word[0] != '=':
+            st[word] = LC
+        # if literal in line, then add it to literal table
+        if word[0] == '=':
+            lt.append([word[2], ''])
+            iLT += 1
+
+        # Handling LTORG
+        if word == "LTORG":
+            is_ltorg = True
+            LTstart = pt[iPT]
+            # update current pool of literals
+            for i in range(LTstart, iLT):
+                lt[i][1] = LC
+                # print(LC)
+                lclist.append(LC)
+                LC += 1
+                # update pool table index and pool table
+                iPT += 1
+                pt.append(iLT)
+    # if LC is already updated by LTORG then don't update again
+    if not is_ltorg:
+        lclist.append(LC)
+        LC += 1
+# remove unnecessary iLT stored in pt
+if pt[-1] == len(lt):
+    pt.pop()
+# storing literal address for remaining literals
+for i in range(0, len(lt)):
+    if lt[i][1] == "":
+        lt[i][1] = LC
+print('Symbol table: \n', st, '\n')
+print('Literal table: \n', lt, '\n')
+print('Pool table: \n', pt)
+print(lclist)
+
+print()
+print()
+
+def getClass(cl):
+    if cl == '1':
+        return "IS"
+    if cl == '2':
+        return "DL"
+    if cl == '3':
+        return "AD"
+    if cl == '4':
+        return "RG"
+    if cl == '5':
+        return "CC"
+
+
+def find_in_st(word):
+    if word in st.keys():
+        return list(st).index(word)
+    return -1
+
+
+def find_in_lt(word):
+    number = word[2]
+    for i in range(len(lt)):
+        if lt[i][0] == number:
+            return i
+    return -1
+
+
+def getIC(word):
+    if word in emot[:, 0]:
+        index = np.argwhere(emot == word)
+        word_index = index[0][0]
+        class_index = emot[word_index][1]
+        op_code = emot[word_index][2]
+        ic_ = getClass(class_index)
+        return "(" + ic_ + "," + op_code + ")"
+    elif find_in_st(word) != -1:
+        return "(S," + str(find_in_st(word)) + ")"
+    elif find_in_lt(word) != -1:
+        return "(L," + str(find_in_lt(word)) + ")"
+
+
+iPTs = 0
+if len(pt) > 1:
+    iPTe = 1
+else:
+    iPTe = 0
+
+lc = 0
+for line in alp_code:
+    if "START" in line:
+        print("\t" + getIC("START") + " " + "(C,", line[1], ")")
+        continue
+    if "ORIGIN" in line:
+        if '+' in line[1]:
+            label = line[1].split('+')
+            address = int(st[label[0]]) + int(label[1])
+            print(str(lclist[lc]) + "\t" + getIC("ORIGIN") + " " + "(C,", address, ")")
+        elif '-' in line[1]:
+            label = line[1].split('-')
+            address = int(st[label[0]]) - int(label[1])
+            print(str(lclist[lc]) + "\t" + getIC("ORIGIN") + " " + "(C,", address, ")")
+        else:
+            address = int(st[line[1]])
+            print(str(lclist[lc]) + "\t" + getIC("ORIGIN") + " " + "(C,", address, ")")
+        lc += 1
+        continue
+    if "DS" in line:
+        word = line[1]
+        print("\t" + getIC(word) + " " + '(C,', line[2], ')')
+        lc += 1
+        continue
+
+    if "LTORG" in line:
+        # fetch literals from literal table corresponding to pool table
+        if iPTs == iPTe:
+            print('(DL, 02) (C,' + lt[iPTs][0] + ')')
+        if iPTe == len(pt):
+            for i in range(iPTe, len(lt)):
+                print('(DL, 02) (C,' + lt[i][0] + ')')
+        else:
+            for i in range(pt[iPTs], pt[iPTe]):
+                print('(DL, 02) (C,' + lt[i][0] + ')')
+        iPTs += 1
+        iPTe += 1
+        continue
+
+    string = str(lclist[lc]) + "\t"
+    for word in line:
+        string += str(getIC(word))
+    print(string)
+    lc += 1
+if iPTs == len(pt) - 1 and pt[iPTs] <= len(lt):
+    for i in range(pt[iPTs], len(lt)):
+        print('\t(DL, 02) (C,' + lt[i][0] + ')')
+
+
+/////////////////////////
+input
+
+	START	200
+	MOVER	AREG ,	=‘5’
+	MOVEM	AREG ,  A
+LOOP	MOVER	AREG ,  A
+	MOVER	CREG ,	B
+	ADD	CREG ,	=‘1’
+	BC	ANY ,	NEXT
+	LTORG
+		=‘5’
+		=‘1’
+NEXT	SUB	AREG ,	=‘1’
+	BC	LT ,	BACK
+LAST	STOP
+	ORIGIN	LOOP+2
+	MULT	CREG ,  B
+	ORIGIN	LAST+1
+A	DS	1
+BACK    EQU LOOP
+B	DS	1
+	END
+		=‘1’
